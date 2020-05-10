@@ -1,0 +1,327 @@
+---
+title: "Assignment 2"
+output:
+  html_document:
+    df_print: paged
+author:  Yueran Xu, Sayed Masihullah Fakhri
+---
+
+# Introduction
+In this document we are exploring the differences in performance of the United States and the BRIC countries in a group of selected development indicators by using the Word Development Indicator dataset. As well as the changing population for all the countries from 1998 to 2017.
+
+## Step 1: library calls to load packages
+
+```{r, warning=FALSE, message=FALSE}  
+library(tidyverse)
+library(leaflet)
+library(WDI)
+library(htmlwidgets)
+library(RColorBrewer)
+library(leaflet.extras)
+library(plotly)
+library(crosstalk)
+library(stringr)
+library("lubridate")
+```
+
+## Step 2:  Call package `WDI` to retrieve most updated figures available.
+
+In this assignment, we will fetch ten data series from the WDI:
+
+|Tableau Name	|WDI Series
+|----------------|:-----------------|
+|Birth Rate	|SP.DYN.CBRT.IN|
+|Infant Mortality Rate	|SP.DYN.IMRT.IN|
+|Internet Usage	|IT.NET.USER.ZS|
+|Life Expectancy (Total)	|SP.DYN.LE00.IN|
+|Forest Area (% of land) | AG.LND.FRST.ZS |
+|Mobile Phone Usage	|IT.CEL.SETS.P2|
+|Population Total	|SP.POP.TOTL|
+|International Tourism receipts (current US$)|ST.INT.RCPT.CD|
+|Import value index (2000=100) | TM.VAL.MRCH.XD.WD|
+|Export value index (2000=100) | TX.VAL.MRCH.XD.WD|
+
+
+```{r}
+birth <- "SP.DYN.CBRT.IN"
+infmort <- "SP.DYN.IMRT.IN"
+net <-"IT.NET.USER.ZS"
+lifeexp <- "SP.DYN.LE00.IN"
+forest <- "AG.LND.FRST.ZS"
+mobile <- "IT.CEL.SETS.P2"
+pop <- "SP.POP.TOTL"
+tour <- "ST.INT.RCPT.CD"
+import <- "TM.VAL.MRCH.XD.WD"
+export <- "TX.VAL.MRCH.XD.WD"
+
+# create a vector of the desired indicator series
+indicators <- c(birth, infmort, net, lifeexp, forest,
+                mobile, pop, tour, import, export)
+
+countries <- WDI(country="all", indicator = indicators, 
+     start = 1998, end = 2018, extra = TRUE)
+
+## rename columns for each of reference
+countries <- rename(countries, birth = SP.DYN.CBRT.IN, 
+       infmort = SP.DYN.IMRT.IN, net  = IT.NET.USER.ZS,
+       lifeexp = SP.DYN.LE00.IN, forest = AG.LND.FRST.ZS,
+       mobile = IT.CEL.SETS.P2, pop = SP.POP.TOTL, 
+       tour = ST.INT.RCPT.CD, import = TM.VAL.MRCH.XD.WD,
+       export = TX.VAL.MRCH.XD.WD)
+
+# convert geocodes from factors into numerics
+
+countries$lng <- as.numeric(as.character(countries$longitude))
+countries$lat <- as.numeric(as.character(countries$latitude))
+
+# Remove groupings, which have no geocodes
+countries <- countries %>%
+   filter(!is.na(lng))
+```
+
+## A Glimpse of the new dataframe
+
+```{r}
+glimpse(countries)
+```
+
+## Plot from Phase 1
+
+To show the changes in different variables in the major countries from 2000 to 2012, we decided to use interactive faceted plots. First, we filtered out the countries that's not needed in this plot, to improve the processing time for later stages. Then, we cleaned the data to make it easier for the later plotting process. For example, change some variables from factor to numeric value, remove symbols, etc. Also, we created 3 new variables to store the "per capita" data.
+
+```{r}
+wi1 <- read.csv("C:/Users/Nees-Public/iCloudDrive/Desktop/information visualization/HW2/World Indicators.csv") %>%
+  filter(Country == "United States" | Country == "Brazil" |Country == "Russian Federation" |Country ==  "India" | Country == "China")
+wi <- wi1 %>% 
+transmute(Country = Country,
+            date           = mdy(Year),
+            Year           = year(date),
+            Internet.Usage      = as.numeric(str_sub(`Internet.Usage`, start =1, end = -2)),
+            CO2.Emissions = as.numeric(`CO2.Emissions`),
+            Health.Exp...GDP     = as.numeric(str_sub(`Health.Exp...GDP`,start =1, end = -2)),
+            
+            # clean population and GDP variables
+            GDP = str_sub(GDP, start =1, end = -2),
+            GDP = gsub("\\$","", GDP),
+            GDP = as.numeric(gsub(",", "", gsub("\\,", "",  GDP))),
+            Population.Total = str_sub(`Population.Total`, start =1, end = -2),
+            Population.Total = as.numeric(gsub(",", "", gsub("\\,", "",  Population.Total))),
+            
+            # new variables (per capita)
+            co2_emmissions_per_capita = round(CO2.Emissions/Population.Total,2),
+            int_usage_per_capita =  round((Internet.Usage*Population.Total)/Population.Total,2),
+            health_exp_per_capita = round((Health.Exp...GDP*GDP)/Population.Total,2))
+
+
+```
+
+When creating the following plots, we all used the automated faceting plots grouping by Country. In each plot, all the 5 subplots are linked so that users can better interact with it. 
+
+We first created a plot using Internet Usage against Year for each country, stored the plot in p1. 
+```{r}
+
+p1 <- wi %>%
+  group_by(Country) %>%
+  do(
+    plot = plot_ly(data = ., x = ~Year, y = ~Internet.Usage) %>%
+      add_lines(name = ~Country)
+    
+  ) %>%
+  subplot(nrows = 1, shareY = TRUE) %>%
+    layout(xaxis = list(title = "Year"), 
+         yaxis = list(title = "Internet Usage"),
+         legend = list(x = 0.2, y = 1, orientation = 'h'),
+         title = "Internet usage across major countries") 
+```
+
+We created a plot using Internet Usage per capita against Year for each country, stored the plot in p12.
+```{r}
+p12 <- wi %>%
+  group_by(Country) %>%
+  do(
+    plot = plot_ly(data = ., x = ~Year, y = ~int_usage_per_capita) %>%
+      add_lines(name = ~Country)
+    
+  ) %>%
+  subplot(nrows = 1, shareY = TRUE) %>%
+    layout(xaxis = list(title = "Year"), 
+         yaxis = list(title = "Internet Usage per capita"),
+         legend = list(x = 0.2, y = 1, orientation = 'h'),
+         title = "Internet usage per capita across major countries") 
+```
+
+We created a plot using CO2 Emission against Year for each country, stored the plot in p2.
+```{r}
+p2 <- wi %>%
+  group_by(Country) %>%
+  do(
+    plot = plot_ly(data = ., x = ~Year, y = ~CO2.Emissions) %>%
+      add_lines(name = ~Country)
+    
+  ) %>%
+  subplot(nrows = 1, shareY = TRUE) %>%
+    layout(xaxis = list(title = "Year"), 
+         yaxis = list(title = "CO2 Emission"),
+         title = "CO2 Emissions across major countries") %>%
+  hide_legend()
+```
+
+We created a plot using CO2 Emission per capita against Year for each country, stored the plot in p22.
+```{r}
+p22 <- wi %>%
+  group_by(Country) %>%
+  do(
+    plot = plot_ly(data = ., x = ~Year, y = ~co2_emmissions_per_capita) %>%
+      add_lines(name = ~Country)
+    
+  ) %>%
+  subplot(nrows = 1, shareY = TRUE) %>%
+    layout(xaxis = list(title = "Year"), 
+         yaxis = list(title = "CO2 Emission per capita"),
+         title = "CO2 Emissions per capita across major countries") %>%
+  hide_legend()
+```
+
+We created a plot using Health Exp % GDP against Year for each country, stored the plot in p3.
+```{r}
+p3 <- wi %>%
+  group_by(Country) %>%
+  do(
+    plot = plot_ly(data = ., x = ~Year, y = ~Health.Exp...GDP) %>%
+      add_lines(name = ~Country)
+    
+  ) %>%
+  subplot(nrows = 1, shareY = TRUE) %>%
+    layout(xaxis = list(title = "Year"), 
+         yaxis = list(title = "Health Exp % GDP"),
+         title = "Health Expenditure as % GDP") %>%
+  hide_legend()
+```
+
+We created a plot using Health Exp % GDP per capita against Year for each country, stored the plot in p32.
+```{r}
+p32 <- wi %>%
+  group_by(Country) %>%
+  do(
+    plot = plot_ly(data = ., x = ~Year, y = ~health_exp_per_capita) %>%
+      add_lines(name = ~Country)
+    
+  ) %>%
+  subplot(nrows = 1, shareY = TRUE) %>%
+    layout(xaxis = list(title = "Year"), 
+         yaxis = list(title = "Health Exp % GDP per capita"),
+         title = "Health Expenditure per capita as % GDP") %>%
+  hide_legend()
+```
+
+```{r}
+plotly("iriiisxu", "a8S2yzmn0uC8jU2YXiRv")
+api_create(p1,filename = "internetusage")
+api_create(p12,filename = "internetusagepc")
+api_create(p2,filename = "co2emission")
+api_create(p22,filename = "co2emissionpc")
+api_create(p3,filename = "healthgdp")
+api_create(p32,filename = "healthgdppc")
+```
+
+
+
+We used bscols to combine all the six plots together, to provide a clearer view for the users.
+
+Health expenditure as a percent of GDP shows how different countries are in terms of prioritizing the health sector in their economies, it seems that these expenditures are a function of the development status of each county. E.g. the US as a developed country has the highest level of spending on health, however, the BRIC (Brazil, Russia, India, & China) countries which are in the developing stage are not spending enough in comparison to the US. Also, the common thing among these countries seems to be a growing trend of expenditures on health, however, this trend seems to be weak for India.
+
+Furthermore, for the internet usage the BRIC countries seem to lag behind the US once again, however, Russia seems to on the verge of catching up with the US and India’s growth in this index seems to have a similar pattern as its health expenditure which was weak.
+
+Moreover, by looking at the plots for the CO2 emission and the CO2 emission per capita we understand the paramount importance of adjusting for population, had we only looked at the CO2 emission in major countries only we would have concluded that China is the largest polluter of the planet, however, by looking at the per capita level, we can see that the US and Russia are the largest emitters of the planet. However, the per capita emission plot still doesn’t hide the fact that China’s emission trend is a fast upward one. Also, in the CO2 emission per capita plot, we vividly see the financial crisis’s effect on the economic activities in Brazil, Russia, and the US, as the economies slow down there is less demand for commodities responsible for carbon emission.
+
+To conclude, for some of these indexes we can vividly see the signs of convergence, e.g. internet usage and for some of them it is obvious that there is a long way to catch up with a developed country like the United States. The case of India seems to very special, its growth trend for both of the three indexes seems to very weak, does this have something to do with the way the country is governed? Can we conclude that if a country is emitting too much CO2 is at the right track of development? With the amount of data and variables we have, it would be very naïve to jump to a conclusion. 
+
+```{r, warning = FALSE, message = FALSE}
+bscols(widths = c(12,12,12), p1,p12, p2,p22, p3,p32)
+```
+
+
+
+
+## World map showing Life Expectancy in 1998
+We mapped the worldwide life expactancy data in the year 1998, with red representing lower life expectancy (below 60) and green representing higher expectancy (above 60). We added mouse-over labels with country name and rounded expectancy number to provide more readability. Also, we set a min zoom level to prevent from the confusion of zooming out too much. And the search function is also added for convenience.
+As we can see from the graph, Europe has the highest average expectancy since it has a cluster with the darkest shade of green. And the Americas follows closly with slightly lighter shade. Asia's life expectancy is about the miiddle level (55-65), with only a few countries with green circles. As for Africa, most of the countries in Africa have red circle markers meaning that they have a relatively low life exectancy. With the data reresented in this way, we can better tell the difference in life expectancy among continents and countries in an easier and clearer way.
+
+```{r}
+country <- countries %>% 
+  drop_na(lifeexp) %>% 
+  filter(year == 1998)
+map <- leaflet(options = leafletOptions(
+                    minZoom = 1.2, dragging = TRUE)) %>% 
+        addProviderTiles(provider = "CartoDB") %>%
+        setView(lng = 40, lat = 60, zoom = 1) %>%
+        setMaxBounds(lng1 = max(country$lng) +5, 
+                    lat1 = max(country$lat) +5, 
+                    lng2 = min(country$lng) -5, 
+                    lat2 = min(country$lat) -5)
+lrange <- (35:85)
+pal <- colorNumeric(palette = "RdYlGn", domain = lrange,reverse = FALSE)
+mapbefore <- map %>%
+    addCircleMarkers(data = country, lng = country$lng, lat = country$lat, 
+                     radius = 4,color = ~pal(lifeexp), 
+                     label = ~paste0(country, " (",round(lifeexp,2), ")")) %>%
+    addLegend(title = "Life Expectancy", pal = pal, 
+              values = lrange, position ="topright", opacity = 0.5) %>%
+  
+    addSearchOSM(options = searchOptions(autoCollapse = TRUE, minLength = 2, zoom = 5)) 
+
+```
+
+
+
+```{r}
+widget_file_size <- function(p) {
+  d <- tempdir()
+  withr::with_dir(d, htmlwidgets::saveWidget(p, "index.html"))
+  f <- file.path(d, "index.html")
+  mb <- round(file.info(f)$size / 1e6, 3)
+  message("File is: ", mb," MB")
+}
+widget_file_size(mapbefore)
+#> File is: 3.495 MB
+
+```
+
+```{r}
+library(htmlwidgets)
+saveWidget(mapbefore, "mapbefore.html", selfcontained = F, libdir = "lib")
+#saveWidget(p, "p2.html", selfcontained = F, libdir = "lib")
+```
+
+```{r}
+zip("mapbefore.zip", c("mapbefore.html", "lib"))
+```
+
+
+
+
+## World map showing the same variable recently
+
+The visualization method and language is similar to what we used in the previous graph, only that the data is for 2017 instead of 1998. Compared to the previous graph, it's obvious that the worldwide life expectancy has improved by a large amount (10-20). Especially for Asia and Africa. The circles in Asia almost all turn into green, and the circles in Africa turn into yellow from red. Europe, Americas and Oceania are starting from a rather high level, but the rest of the world are catching up slowly but steady.
+```{r}
+country2 <- countries %>% 
+  drop_na(lifeexp) %>% 
+  filter(year == 2017)
+map2 <- leaflet(options = leafletOptions(
+                    minZoom = 1.2, dragging = TRUE)) %>% 
+        addProviderTiles(provider = "CartoDB") %>%
+        setView(lng = 40, lat = 60, zoom = 1) %>%
+        setMaxBounds(lng1 = max(country2$lng) +5, 
+                    lat1 = max(country2$lat) +5, 
+                    lng2 = min(country2$lng) -5, 
+                    lat2 = min(country2$lat) -5)
+lrange2 <- (35:85)
+pal2 <- colorNumeric(palette = "RdYlGn", domain = lrange2,reverse = FALSE)
+map2 %>%
+    addCircleMarkers(data = country2, lng = country2$lng, lat = country2$lat, 
+                     radius = 4,color = ~pal2(lifeexp), 
+                     label = ~paste0(country, " (",round(lifeexp,2), ")")) %>%
+    addLegend(title = "Life Expectancy", pal = pal2, 
+              values = lrange2, position = "topright", opacity = 0.5) %>%
+    addSearchOSM(options = searchOptions(autoCollapse = TRUE, minLength = 2, zoom = 5)) 
+```
